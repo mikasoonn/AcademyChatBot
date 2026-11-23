@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { createHash, randomInt, randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
 import express from "express";
 import cors from "cors";
 import jwt from "jsonwebtoken";
@@ -14,11 +15,20 @@ import {
 } from "./integrations.js";
 import { askAI, aiEnabled } from "./ai.js";
 import { fetchUrlText } from "./kb.js";
-
+import multer from "multer";
+import mammoth from "mammoth";
+const require = createRequire(import.meta.url);
+const pdfParse = require("pdf-parse");
 const SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 const app = express();
 app.use(cors());
 app.use(express.json());
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10 MB
+  },
+});
 const h = (fn) => (req, res, next) => fn(req, res, next).catch(next); // async error wrapper
 
 // attaches req.user (null for guests)
@@ -642,32 +652,84 @@ app.get(
     ),
   ),
 );
+
 app.post(
   "/api/kb",
   need("admin"),
+  upload.single("file"),
   h(async (req, res) => {
-    // PDF / DOCX / TXT / URL only in MVP (PRD 8.2)
     const type = String(req.body.type || "").toUpperCase();
-    if (!["PDF", "DOCX", "TXT", "URL"].includes(type))
+
+    if (!["PDF", "DOCX", "TXT", "URL"].includes(type)) {
       return res.status(400).json({ error: "unsupported_type" });
-    let content = String(req.body.content || "");
+    }
+
+    let content = "";
+    let name = String(req.body.name || "").trim();
+
     if (type === "URL") {
+      if (!name) {
+        return res.status(400).json({ error: "url_required" });
+      }
+
       try {
-        content = (await fetchUrlText(req.body.name)).text;
+        content = (await fetchUrlText(name)).text;
       } catch (e) {
-        return res
-          .status(400)
-          .json({ error: "fetch_failed", detail: e.message });
+        return res.status(400).json({
+          error: "fetch_failed",
+          detail: e.message,
+        });
+      }
+    } else {
+      if (!req.file) {
+        return res.status(400).json({ error: "file_required" });
+      }
+
+      const extension = req.file.originalname.split(".").pop().toLowerCase();
+
+      if (extension !== type.toLowerCase()) {
+        return res.status(400).json({ error: "file_type_mismatch" });
+      }
+
+      name = name || req.file.originalname;
+
+      try {
+        if (type === "PDF") {
+          const result = await pdfParse(req.file.buffer);
+          content = result.text;
+        } else if (type === "DOCX") {
+          const result = await mammoth.extractRawText({
+            buffer: req.file.buffer,
+          });
+          content = result.value;
+        } else if (type === "TXT") {
+          content = req.file.buffer.toString("utf8");
+        }
+      } catch (e) {
+        return res.status(400).json({
+          error: "file_processing_failed",
+          detail: e.message,
+        });
       }
     }
+
+    content = content.trim();
+
+    if (!content) {
+      return res.status(400).json({ error: "empty_content" });
+    }
+
     const r = await q(
       "INSERT INTO kb_sources (name,type,topic,content) VALUES ($1,$2,$3,$4) RETURNING id",
-      [req.body.name, type, req.body.topic || "general", content],
+      [name, type, req.body.topic || "general", content],
     );
+
     await audit(req, "kb:add", r.rows[0].id);
+
     res.json(r.rows[0]);
   }),
 );
+
 app.patch(
   "/api/kb/:id/approve",
   need("admin"),

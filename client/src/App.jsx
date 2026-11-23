@@ -1124,7 +1124,17 @@ function Admin({ view, lang, setLang, user, setUser, setView, note }) {
     email: "",
     role: "staff",
   });
+  const [showAddSource, setShowAddSource] = useState(false);
+  const [savingSource, setSavingSource] = useState(false);
   const [savingUser, setSavingUser] = useState(false);
+  const [sourceTypeOpen, setSourceTypeOpen] = useState(false);
+  const [sourceFile, setSourceFile] = useState(null);
+
+  const [newSource, setNewSource] = useState({
+    name: "",
+    type: "PDF",
+    topic: "courses",
+  });
 
   const load = () =>
     api(cfg.path)
@@ -1249,14 +1259,7 @@ function Admin({ view, lang, setLang, user, setUser, setView, note }) {
     view === "users"
       ? () => setShowAddUser(true)
       : view === "kb"
-        ? () => {
-            const name = prompt(t("p_src"));
-            const type = prompt(t("p_type"), "PDF");
-            const topic = prompt(t("p_topic"), "courses");
-            const content =
-              String(type).toUpperCase() === "TXT" ? prompt(t("p_text")) : "";
-            name && act("POST", "/kb", { name, type, topic, content });
-          }
+        ? () => setShowAddSource(true)
         : null;
   const inviteStaff = async (e) => {
     e.preventDefault();
@@ -1289,6 +1292,58 @@ function Admin({ view, lang, setLang, user, setUser, setView, note }) {
       setSavingUser(false);
     }
   };
+
+  const addSource = async (e) => {
+    e.preventDefault();
+
+    if (!newSource.name.trim()) {
+      note(
+        newSource.type === "URL"
+          ? "Please enter a URL."
+          : "Please enter a source name.",
+      );
+      return;
+    }
+
+    if (newSource.type !== "URL" && !sourceFile) {
+      note("Please select a file.");
+      return;
+    }
+
+    setSavingSource(true);
+
+    try {
+      const formData = new FormData();
+
+      formData.append("name", newSource.name.trim());
+      formData.append("type", newSource.type);
+      formData.append("topic", newSource.topic || "general");
+
+      if (sourceFile) {
+        formData.append("file", sourceFile);
+      }
+
+      await api("/kb", {
+        method: "POST",
+        body: formData,
+      });
+
+      note("Knowledge source added successfully!");
+      setShowAddSource(false);
+      setSourceFile(null);
+      setNewSource({
+        name: "",
+        type: "PDF",
+        topic: "courses",
+      });
+      load();
+    } catch (error) {
+      note(error.message);
+    } finally {
+      setSavingSource(false);
+    }
+  };
+
   const showDetail = view === "sup" && openId && detail;
   const detailPanel = showDetail && (
     <div
@@ -1692,6 +1747,261 @@ function Admin({ view, lang, setLang, user, setUser, setView, note }) {
                 disabled={savingUser || newUser.role !== "staff"}
               >
                 {savingUser ? "Sending..." : "Send Invitation"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {view === "kb" && showAddSource && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            background: "rgba(11,11,13,.48)",
+            backdropFilter: "blur(3px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <form
+            onSubmit={addSource}
+            style={{
+              width: "100%",
+              maxWidth: 460,
+              background: "rgba(24,24,27,.88)",
+              backdropFilter: "blur(18px)",
+              border: "1px solid var(--mg)",
+              boxShadow: "0 0 35px rgba(190,41,188,.28)",
+              padding: 28,
+              display: "flex",
+              flexDirection: "column",
+              gap: 18,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <h2 style={{ margin: 0, color: "var(--cy)" }}>ADD SOURCE</h2>
+
+              <button
+                type="button"
+                className="btn sec"
+                onClick={() => setShowAddSource(false)}
+              >
+                ×
+              </button>
+            </div>
+
+            <label>
+              <span className="mu">Source Name / URL</span>
+              <input
+                className="input"
+                value={newSource.name}
+                onChange={(e) =>
+                  setNewSource({
+                    ...newSource,
+                    name: e.target.value,
+                  })
+                }
+                placeholder="Enter source name or URL"
+                required
+              />
+            </label>
+
+            <label
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                font: '500 13px "JetBrains Mono"',
+                color: "var(--cy)",
+              }}
+            >
+              SOURCE TYPE
+              <div style={{ position: "relative", width: "100%" }}>
+                <button
+                  type="button"
+                  onClick={() => setSourceTypeOpen(!sourceTypeOpen)}
+                  style={{
+                    width: "100%",
+                    padding: "12px 14px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    background: "var(--bg)",
+                    color: "var(--cy)",
+                    border: "1px solid var(--bd)",
+                    font: '14px "Inter", sans-serif',
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  {newSource.type}
+                  <span>{sourceTypeOpen ? "▲" : "▼"}</span>
+                </button>
+
+                {sourceTypeOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 0,
+                      width: "100%",
+                      zIndex: 10,
+                      background: "var(--sf)",
+                      border: "1px solid var(--cy)",
+                    }}
+                  >
+                    {["PDF", "DOCX", "TXT", "URL"].map((type) => (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => {
+                          setNewSource({ ...newSource, type });
+                          setSourceFile(null);
+                          setSourceTypeOpen(false);
+                        }}
+                        style={{
+                          display: "block",
+                          width: "100%",
+                          padding: "12px 14px",
+                          textAlign: "left",
+                          background:
+                            newSource.type === type
+                              ? "rgba(125,249,233,.15)"
+                              : "transparent",
+                          color: "var(--cy)",
+                          border: "none",
+                          borderBottom: "1px solid var(--bd)",
+                          font: '14px "Inter", sans-serif',
+                          cursor: "pointer",
+                        }}
+                      >
+                        {type}
+                        {newSource.type === type ? " ✓" : ""}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </label>
+
+            {newSource.type !== "URL" && (
+              <label
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                  font: '500 13px "JetBrains Mono"',
+                  color: "var(--cy)",
+                }}
+              >
+                UPLOAD FILE ({newSource.type})
+                <div style={{ position: "relative", display: "inline-flex" }}>
+                  <span
+                    className="btn sec"
+                    style={{
+                      padding: "8px 14px",
+                      fontSize: 11,
+                      letterSpacing: "0.08em",
+                      color: "var(--cy)",
+                      border: "1px solid var(--cy)",
+                      boxShadow: "0 0 10px rgba(125,249,233,.25)",
+                      textShadow: "0 0 8px rgba(125,249,233,.5)",
+                      transition: "all .2s ease",
+                    }}
+                  >
+                    {sourceFile ? "Change File" : "Choose File"}
+                  </span>
+
+                  <input
+                    key={newSource.type}
+                    type="file"
+                    accept={
+                      newSource.type === "PDF"
+                        ? ".pdf,application/pdf"
+                        : newSource.type === "DOCX"
+                          ? ".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                          : ".txt,text/plain"
+                    }
+                    onChange={(e) => setSourceFile(e.target.files?.[0] || null)}
+                    required
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      width: "100%",
+                      height: "100%",
+                      opacity: 0,
+                      cursor: "pointer",
+                    }}
+                  />
+                </div>
+                {sourceFile && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const fileUrl = URL.createObjectURL(sourceFile);
+                      window.open(fileUrl, "_blank", "noopener,noreferrer");
+                    }}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      padding: 0,
+                      color: "var(--cy)",
+                      textAlign: "left",
+                      font: '13px "Inter", sans-serif',
+                      textDecoration: "underline",
+                      cursor: "pointer",
+                      textShadow: "0 0 7px rgba(125,249,233,.35)",
+                    }}
+                  >
+                    <icon-placeholder />
+                    {sourceFile.name}
+                  </button>
+                )}
+              </label>
+            )}
+
+            <label>
+              <span className="mu">Topic</span>
+              <input
+                className="input"
+                value={newSource.topic}
+                onChange={(e) =>
+                  setNewSource({
+                    ...newSource,
+                    topic: e.target.value,
+                  })
+                }
+                placeholder="e.g. courses"
+              />
+            </label>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 10,
+              }}
+            >
+              <button
+                type="button"
+                className="btn sec"
+                onClick={() => setShowAddSource(false)}
+              >
+                Cancel
+              </button>
+
+              <button type="submit" className="btn" disabled={savingSource}>
+                {savingSource ? "Adding..." : "Add Source"}
               </button>
             </div>
           </form>

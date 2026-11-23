@@ -125,3 +125,37 @@ input{background:var(--bg);border:1px solid var(--bd);padding:12px 14px;width:10
   width: 100%;
   box-sizing: border-box;
 }
+/* Sign Up: consistent layout across languages */
+.login:has(.auth-signup) {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  align-items: center;
+}
+
+.login:has(.auth-signup) .stage {
+  width: 100%;
+  height: 540px;
+  min-width: 0;
+}
+
+.login:has(.auth-signup) .art2 {
+  width: 100%;
+  height: 440px;
+  min-width: 0;
+  flex: none;
+}
+
+.login:has(.auth-signup) .auth-signup {
+  width: 100%;
+  min-width: 0;
+}
+
+.login:has(.auth-signup) .auth-signup input {
+  width: 100%;
+  height: 46px;
+  box-sizing: border-box;
+  font-size: 14px;
+}
+
+.login:has(.auth-signup) .auth-signup > div {
+  width: 100%;
+}
